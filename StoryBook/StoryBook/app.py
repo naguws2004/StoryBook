@@ -1,6 +1,11 @@
-from flask import Flask, request, render_template_string, render_template
+from flask import Flask, request, render_template_string
 import requests
 import json
+
+# Machine Learning libraries 
+import torch
+from torch import autocast
+from diffusers import StableDiffusionPipeline
 
 app = Flask(__name__)
 
@@ -67,7 +72,7 @@ def index():
             </script>
         </head>
         <body>
-            <form action="/generateStoryBook" method="post" class="form-container" onsubmit="return validateForm()">
+            <form id="myForm" name="myForm" action="/generateStoryBook" method="post" class="form-container">
                 <h1>Story Book</h1>
                 <h2>Select Options</h2>
                 <table class="form-table">
@@ -186,10 +191,32 @@ def index():
                 </table>
                 <p>
                     <!-- Submit Button -->
-                    <input type="submit" value="Submit Options">
+                    <input id="btnSubmit" name="btnSubmit" type="submit" value="Submit Options">
+                    <script>
+                        const submitButton = document.getElementById('btnSubmit');
+                        const form = document.getElementById('myForm'); 
 
+                        submitButton.addEventListener('click', () => {
+                            // Prevent default form submission behavior
+                            event.preventDefault();
+                            
+                            if (validateForm()) {
+                                // Submit the form
+                                form.submit();
+                            }
+                        });
+                    </script>
                     <!-- Reset Button -->
-                    <input type="reset" value="Reset">
+                    <input id="btnReset" name="btnReset" type="reset" value="Reset">
+                    <script>
+                        const resetButton = document.getElementById('btnReset');
+                        const form = document.getElementById('myForm'); 
+
+                        resetButton.addEventListener('click', function() {
+                            // Reset the form
+                            form.reset();
+                        });
+                  </script>
                 </p>
             </form>
         </body>
@@ -207,6 +234,20 @@ def generateStoryBook():
     # Generate text
     prompt = f"Write a story on: {txtPrompt}. Story should be based on theme: {txtTheme}. Story should contain {txtWords} number of words."
     
+    # generated_story = generate_text(prompt)
+
+    generated_story = "In a lush valley, a tiny dragon named Spark loved to play. Unlike others, Spark was fearless, always seeking new adventures. One sunny morning, Spark discovered a cave hidden behind a waterfall. Ignoring the warnings of his friends, he ventured inside. The cave was dark and echoed with mysterious sounds. Spark\'s heart raced with excitement. Deeper in, he found an old, dusty map. It led to the legendary Crystal Cavern. With the map in his claws, Spark embarked on a quest, facing riddles and traps, until he finally beheld the shimmering crystals, proving that bravery and curiosity lead to the greatest adventures."
+
+    # Generate cover image
+    cover_imageprompt = f"{txtPrompt}. theme: {txtTheme}."
+
+    cover_image_url = generate_image(cover_imageprompt)
+    # cover_image_url = ""
+
+    # Process the form data as needed
+    return render_song_form(generated_story, cover_image_url)
+
+def generate_text(prompt):
     url = "https://api.x.ai/v1/chat/completions"
     headers = {
       "Authorization": "Bearer xai-P2VrBOBKw2Z2apm7eu5CA0s6ryOf9E32rNfnXVmmuafPvLWsX4G8eaXLBtgTvFd86kgMDyeyQ0JN1akK",
@@ -229,11 +270,30 @@ def generateStoryBook():
         generated_story = response_json['choices'][0]['message']['content'].strip()
     else:
         generated_story = 'Error generating story.'
+    
+    return generated_story
 
-    # Process the form data as needed
-    return render_song_form(generated_story)
+# Generate image from text 
+def generate_image(prompt):
+    """ This function generate image from a text with stable diffusion"""
+    # Download stable diffusion model from hugging face 
+    modelid = "CompVis/stable-diffusion-v1-4"
+    device = "cuda"
+    stable_diffusion_model = StableDiffusionPipeline.from_pretrained(modelid, revision="fp16", torch_dtype=torch.float16, use_auth_token="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") 
+    stable_diffusion_model.to(device) 
 
-def render_song_form(generated_story):
+    with autocast(device): 
+        image = stable_diffusion_model(prompt,guidance_scale=8.5).images[0]
+    
+    # Save the generated image
+    image.save("images\\coverimage.png")
+  
+    return "images\\coverimage.png"
+# response = requests.get(image_url)
+# with open("generated_image.jpg", 'wb') as f:
+#     f.write(response.content)
+
+def render_song_form(generated_story, cover_image_url):
     return render_template_string('''
         <!DOCTYPE html>
         <html lang="en">
@@ -260,7 +320,9 @@ def render_song_form(generated_story):
                 <h2>Story Board</h2>
                 <div><textarea id="txtStory" name="txtStory" style="vertical-align:middle;" rows="10" cols="75">{{ generated_story }}</textarea></div><br/>
                 <h2>Illustrations</h2>
-                <div>Images</div><br/>
+                <h3>Cover Image</h3>
+                <div><img src="{{ cover_image_url }}" alt="Cover Image"></div><br/>
+                <h3>Other Image</h3>
                 <!-- Submit Button -->
                 <div>
                 <input type="submit" value="Generate PDF">
@@ -269,7 +331,7 @@ def render_song_form(generated_story):
             </form>
         </body>
         </html>
-    ''', generated_story=generated_story)
+    ''', generated_story=generated_story, cover_image_url=cover_image_url)
 
 if __name__ == '__main__':
     import os
