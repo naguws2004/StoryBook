@@ -1,11 +1,18 @@
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template_string, redirect, url_for, send_from_directory
 import requests
 import json
+import os
+import re
 
-# Machine Learning libraries 
 import torch
-from torch import autocast
-from diffusers import StableDiffusionPipeline
+# from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
+
+from reportlab.lib.enums import TA_JUSTIFY
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
 
 app = Flask(__name__)
 
@@ -19,7 +26,7 @@ def index():
         <html lang="en">
         <head>
             <meta charset="UTF-8">
-            <title>Select Options</title>
+            <title>Story Book</title>
             <style>
                 .form-container {
                     display: flex;
@@ -27,7 +34,7 @@ def index():
                     align-items: center;
                 }
                 .form-table {
-                    margin: 0 auto;
+                    margin: 50 auto;
                 }
                 .field-width {
                     width: 350px;
@@ -172,11 +179,9 @@ def index():
                             <input type="text" id="txtIllustrations" name="txtIllustrations" class="field-firsthalfwidth" placeholder="Select or type...">
                             <select id="lstIllustrations" name="lstIllustrations" class="field-secondhalfwidth">
                                 <option value="">Select No. of Illustrations</option>
-                                <option value="2">2</option>
-                                <option value="4">4</option>
-                                <option value="6">6</option>
-                                <option value="8">8</option>
-                                <option value="10">10</option>
+                                <option value="1">1</option>
+                                <option value="3">3</option>
+                                <option value="5">5</option>
                             </select>
                             <script>
                                 const lstIllustrationsElement = document.getElementById('lstIllustrations');
@@ -234,18 +239,20 @@ def generateStoryBook():
     # Generate text
     prompt = f"Write a story on: {txtPrompt}. Story should be based on theme: {txtTheme}. Story should contain {txtWords} number of words."
     
-    # generated_story = generate_text(prompt)
+    generated_story = generate_text(prompt)
 
-    generated_story = "In a lush valley, a tiny dragon named Spark loved to play. Unlike others, Spark was fearless, always seeking new adventures. One sunny morning, Spark discovered a cave hidden behind a waterfall. Ignoring the warnings of his friends, he ventured inside. The cave was dark and echoed with mysterious sounds. Spark\'s heart raced with excitement. Deeper in, he found an old, dusty map. It led to the legendary Crystal Cavern. With the map in his claws, Spark embarked on a quest, facing riddles and traps, until he finally beheld the shimmering crystals, proving that bravery and curiosity lead to the greatest adventures."
+    # generated_story = "In a lush valley, a tiny dragon named Spark loved to play. \nUnlike others, Spark was fearless, always seeking new adventures. \nOne sunny morning, Spark discovered a cave hidden behind a waterfall. \nIgnoring the warnings of his friends, he ventured inside. \nThe cave was dark and echoed with mysterious sounds. \nSpark\'s heart raced with excitement. \nDeeper in, he found an old, dusty map. It led to the legendary Crystal Cavern. \nWith the map in his claws, Spark embarked on a quest, facing riddles and traps, until he finally beheld the shimmering crystals, proving that bravery and curiosity lead to the greatest adventures."
 
     # Generate cover image
-    cover_imageprompt = f"{txtPrompt}. theme: {txtTheme}."
+    cover_imageprompt = f"{txtPrompt}. theme: {txtTheme}. art style: {txtStyle}"
 
-    cover_image_url = generate_image(cover_imageprompt)
-    # cover_image_url = ""
+    # Generate images
+    imageprompt = f"theme: {txtTheme}. art style: {txtStyle}. {generated_story}"
+
+    image_urls = generate_image(cover_imageprompt, imageprompt, int(txtIllustrations))
 
     # Process the form data as needed
-    return render_song_form(generated_story, cover_image_url)
+    return render_story_form(generated_story, image_urls)
 
 def generate_text(prompt):
     url = "https://api.x.ai/v1/chat/completions"
@@ -274,32 +281,36 @@ def generate_text(prompt):
     return generated_story
 
 # Generate image from text 
-def generate_image(prompt):
-    """ This function generate image from a text with stable diffusion"""
-    # Download stable diffusion model from hugging face 
-    modelid = "CompVis/stable-diffusion-v1-4"
-    device = "cuda"
-    stable_diffusion_model = StableDiffusionPipeline.from_pretrained(modelid, revision="fp16", torch_dtype=torch.float16, use_auth_token="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") 
-    stable_diffusion_model.to(device) 
+def generate_image(cover_imageprompt, imageprompt, n):
+    # model_id = "stabilityai/stable-diffusion-2-1"
 
-    with autocast(device): 
-        image = stable_diffusion_model(prompt,guidance_scale=8.5).images[0]
+    # # Use the DPMSolverMultistepScheduler (DPM-Solver++) scheduler here instead
+    # pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+    # pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+    # pipe = pipe.to("cuda")
+
+    image_urls = ["", "", "", "", "", "", ""]
+    images = ["", "", "", "", "", ""]
+    # images = pipe(cover_imageprompt, guidance_scale=7.5, num_inference_steps=50, num_images_per_prompt=1)
+    # images[0].save(f"images/image_0.png")
+    # image_urls[0] = images[0]
+    image_urls[0] = f"image_0.jpeg"
+    # images = pipe(imageprompt, guidance_scale=7.5, num_inference_steps=50, num_images_per_prompt=n)
+    i = 1
+    for image in images:
+        # image.save(f"images/image_{i}.png")
+        image_urls[i] = f"images/image_{i}.jpeg"
+        i = i + 1
     
-    # Save the generated image
-    image.save("images\\coverimage.png")
-  
-    return "images\\coverimage.png"
-# response = requests.get(image_url)
-# with open("generated_image.jpg", 'wb') as f:
-#     f.write(response.content)
+    return image_urls
 
-def render_song_form(generated_story, cover_image_url):
+def render_story_form(generated_story, image_urls):
     return render_template_string('''
         <!DOCTYPE html>
         <html lang="en">
         <head>
             <meta charset="UTF-8">
-            <title>Song Lyrics</title>
+            <title>Story Book</title>
             <style>
                 .form-container {
                     display: flex;
@@ -307,10 +318,18 @@ def render_song_form(generated_story, cover_image_url):
                     align-items: center;
                 }
                 .form-table {
-                    margin: 0 auto;
+                    margin: 50 auto;
                 }
                 .field-width {
                     width: 250px;
+                }
+                .cover-image-width {
+                    width: 200px;
+                    height: 250px;
+                }
+                .image-width {
+                    width: 100px;
+                    height: 150px;
                 }
             </style>
         </head>
@@ -320,18 +339,122 @@ def render_song_form(generated_story, cover_image_url):
                 <h2>Story Board</h2>
                 <div><textarea id="txtStory" name="txtStory" style="vertical-align:middle;" rows="10" cols="75">{{ generated_story }}</textarea></div><br/>
                 <h2>Illustrations</h2>
-                <h3>Cover Image</h3>
-                <div><img src="{{ cover_image_url }}" alt="Cover Image"></div><br/>
-                <h3>Other Image</h3>
+                <h3>Cover Picture</h3>
+                <div><img src="{{ url_for('static', filename='images/image_0.jpeg') }}" class="cover-image-width" alt="Cover Image"></div><br/>
+                <h3>Other Pictures</h3>
+                <div>
+                    <table class="form-table">
+                        <tr>
+                            <td>
+                                {% if image_urls[1] == "" %}
+                                    <img src="" alt="Blank Image">
+                                {% else %}
+                                    <img src="{{ url_for('static', filename='images/image_1.jpeg') }}" class="image-width" alt="First Image">
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if image_urls[2] == "" %}
+                                    <img src="" alt="Blank Image">
+                                {% else %}
+                                    <img src="{{ url_for('static', filename='images/image_2.jpeg') }}" class="image-width" alt="Second Image">
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if image_urls[3] == "" %}
+                                    <img src="" alt="Blank Image">
+                                {% else %}
+                                    <img src="{{ url_for('static', filename='images/image_3.jpeg') }}" class="image-width" alt="Third Image">
+                                {% endif %}
+                            </td>
+                        <tr>
+                        <tr>
+                            <td>
+                                {% if image_urls[4] == "" %}
+                                    <img src="" alt="Blank Image">
+                                {% else %}
+                                    <img src="{{ url_for('static', filename='images/image_4.jpeg') }}" class="image-width" alt="Fourth Image">
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if image_urls[5] == "" %}
+                                    <img src="" alt="Blank Image">
+                                {% else %}
+                                    <img src="{{ url_for('static', filename='images/image_5.jpeg') }}" class="image-width" alt="Fifth Image">
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if image_urls[6] == "" %}
+                                    <img src="" alt="Blank Image">
+                                {% else %}
+                                    <img src="{{ url_for('static', filename='images/image_6.jpeg') }}" class="image-width" alt="Sixth Image">
+                                {% endif %}
+                            </td>
+                        <tr>
+                    </table>
+                </div><br/>
                 <!-- Submit Button -->
                 <div>
-                <input type="submit" value="Generate PDF">
-                <input type="button" onclick="history.back()" value="Back">
+                    <input type="submit" value="Generate PDF">
+                    <input type="button" onclick="history.back()" value="Back">
                 </div>
             </form>
         </body>
         </html>
-    ''', generated_story=generated_story, cover_image_url=cover_image_url)
+    ''', generated_story=generated_story, image_urls=image_urls)
+
+@app.route('/generatePDF', methods=['POST'])
+def generatePDF():
+    txtStory = request.form.get('txtStory')
+    paras = re.split(r'\n+', txtStory)
+    image_path = os.path.join("static", "images/image_0.jpeg")
+    create_pdf(paras)
+
+    return render_story_download()
+
+def create_pdf(paras):
+    doc = SimpleDocTemplate(os.path.join("static", "output.pdf"),pagesize=letter,
+                        rightMargin=72,leftMargin=72,
+                        topMargin=72,bottomMargin=18)
+    Story=[]
+    cover_image = os.path.join("static", "images/image_0.jpeg")
+    im = Image(cover_image, 7*inch, 9*inch)
+    Story.append(im)
+    Story.append(Spacer(1, 12))
+    styles=getSampleStyleSheet()
+    styles.add(ParagraphStyle(name='Justify', alignment=TA_JUSTIFY))
+    i = 1
+    for para in paras:
+        Story.append(Paragraph(para, styles["Normal"]))
+        Story.append(Spacer(1, 12))
+        image = os.path.join("static", f"images/image_{i}.jpeg")
+        try:
+            # Code that might raise an exception
+            im = Image(image, 3*inch, 3*inch)
+            Story.append(im)
+            Story.append(Spacer(1, 12))
+        except Exception:
+            # Code to handle the exception
+            pass  # Silently ignore the exception
+        i = i + 1
+    
+    doc.build(Story)
+
+def render_story_download():
+    return render_template_string('''
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <title>Story Book</title>
+        </head>
+        <body>
+            <h1>Story Book</h1>
+            <p>
+                <a href="{{ url_for('static', filename='output.pdf') }}">Download File</a>
+            </p>
+        </body>
+        </html>
+    ''')
 
 if __name__ == '__main__':
     import os
